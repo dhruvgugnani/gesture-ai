@@ -60,6 +60,8 @@ while cap.isOpened():
     # Volume Control Mode
     elif mode == "volume":
         cv2.putText(frame, "Volume Control Mode", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+        cv2.putText(frame, "Show fist to go back to menu", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
         if result.multi_hand_landmarks:
             for hand_landmarks in result.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
@@ -79,6 +81,15 @@ while cap.isOpened():
                         pyautogui.press("volumedown")
                     prev_time = current_time
 
+        # Back to menu on fist gesture
+        for hand_landmarks in result.multi_hand_landmarks:
+            fist_closed = all(
+                hand_landmarks.landmark[tip].y > hand_landmarks.landmark[tip - 2].y
+                for tip in [8, 12, 16, 20]
+            )
+            if fist_closed:
+                mode = "menu"
+
     # Drawing Mode
     elif mode == "drawing":
         if not canvas_initialized:
@@ -86,6 +97,9 @@ while cap.isOpened():
             canvas_initialized = True
 
         cv2.putText(frame, "Drawing Mode", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+        cv2.putText(frame, "Show fist to go back to menu", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(frame, "Show open palm to erase all", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
         if result.multi_hand_landmarks:
             for hand_landmarks in result.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
@@ -97,6 +111,22 @@ while cap.isOpened():
 
                 # Draw circle where index finger is
                 cv2.circle(canvas, (index_x, index_y), 5, (0, 255, 0), -1)
+
+                # Check for open palm gesture to erase all
+                palm_open = all(
+                    hand_landmarks.landmark[tip].y < hand_landmarks.landmark[tip - 2].y
+                    for tip in [8, 12, 16, 20]
+                )
+                if palm_open:
+                    canvas = np.zeros_like(frame)
+
+                # Check for fist gesture to go back to menu
+                fist_closed = all(
+                    hand_landmarks.landmark[tip].y > hand_landmarks.landmark[tip - 2].y
+                    for tip in [8, 12, 16, 20]
+                )
+                if fist_closed:
+                    mode = "menu"
 
         # Blend canvas with original frame
         frame = cv2.addWeighted(frame, 0.7, canvas, 0.3, 0)
