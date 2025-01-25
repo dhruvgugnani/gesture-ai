@@ -12,12 +12,22 @@ hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7
 # Variables for control
 mode = "menu"  # Initial mode
 prev_time = time.time()
-selected_option = None
+hold_start_time = None
+menu_options = ["Volume Control", "Drawing"]
+canvas_initialized = False
 canvas = None
 
 # Open Webcam
 cap = cv2.VideoCapture(0)
-canvas_initialized = False
+
+def check_hover_and_hold(index_x, index_y, x1, y1, x2, y2, hold_start_time):
+    """Check if the index finger is hovering over a button and handle holding logic."""
+    if x1 < index_x < x2 and y1 < index_y < y2:
+        if hold_start_time is None:
+            return time.time()
+        elif time.time() - hold_start_time > 1:  # Hold for 3 seconds
+            return "selected"
+    return None
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -31,36 +41,39 @@ while cap.isOpened():
     # Process Hand Detection
     result = hands.process(rgb_frame)
 
+    height, width, _ = frame.shape
+
     # Menu
     if mode == "menu":
-        cv2.putText(frame, "1. Volume Control", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cv2.putText(frame, "2. Drawing", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        for i, option in enumerate(menu_options):
+            y_position = 100 + i * 50
+            cv2.putText(frame, f"{i + 1}. {option}", (50, y_position), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
         if result.multi_hand_landmarks:
             for hand_landmarks in result.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
                 index_tip = hand_landmarks.landmark[8]
-                thumb_tip = hand_landmarks.landmark[4]
-
-                height, width, _ = frame.shape
                 index_x, index_y = int(index_tip.x * width), int(index_tip.y * height)
 
                 # Draw circle on index finger tip
                 cv2.circle(frame, (index_x, index_y), 10, (255, 0, 0), -1)
 
-                # Check if index finger tip is near the options
-                if 40 < index_x < 300 and 70 < index_y < 120:  # Near "Volume Control"
-                    selected_option = "volume"
-                    mode = "volume"
-                elif 40 < index_x < 300 and 130 < index_y < 180:  # Near "Drawing"
-                    selected_option = "drawing"
-                    mode = "drawing"
+                for i, option in enumerate(menu_options):
+                    y_position = 100 + i * 50
+                    result = check_hover_and_hold(index_x, index_y, 50, y_position - 30, 300, y_position + 10, hold_start_time)
+                    if result == "selected":
+                        mode = option.lower().replace(" ", "_")
+                        hold_start_time = None
+                        break
+                    elif result:
+                        hold_start_time = result
 
     # Volume Control Mode
-    elif mode == "volume":
+    elif mode == "volume_control":
         cv2.putText(frame, "Volume Control Mode", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-        cv2.putText(frame, "Show fist to go back to menu", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.rectangle(frame, (500, 20), (650, 70), (0, 255, 0), -1)
+        cv2.putText(frame, "Back", (510, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
         if result.multi_hand_landmarks:
             for hand_landmarks in result.multi_hand_landmarks:
@@ -68,11 +81,20 @@ while cap.isOpened():
 
                 index_tip = hand_landmarks.landmark[8]
                 index_base = hand_landmarks.landmark[5]
-
-                height, width, _ = frame.shape
+                index_x, index_y = int(index_tip.x * width), int(index_tip.y * height)
                 index_tip_y = int(index_tip.y * height)
                 index_base_y = int(index_base.y * height)
 
+                # Check for "Back" button hover
+                result = check_hover_and_hold(index_x, index_y, 500, 20, 650, 70, hold_start_time)
+                if result == "selected":
+                    mode = "menu"
+                    hold_start_time = None
+                    break
+                elif result:
+                    hold_start_time = result
+
+                # Volume control logic
                 current_time = time.time()
                 if current_time - prev_time > 0.2:  # Delay for smooth changes
                     if index_tip_y < index_base_y:  # Index finger pointing up
@@ -81,15 +103,6 @@ while cap.isOpened():
                         pyautogui.press("volumedown")
                     prev_time = current_time
 
-        # Back to menu on fist gesture
-        for hand_landmarks in result.multi_hand_landmarks:
-            fist_closed = all(
-                hand_landmarks.landmark[tip].y > hand_landmarks.landmark[tip - 2].y
-                for tip in [8, 12, 16, 20]
-            )
-            if fist_closed:
-                mode = "menu"
-
     # Drawing Mode
     elif mode == "drawing":
         if not canvas_initialized:
@@ -97,36 +110,34 @@ while cap.isOpened():
             canvas_initialized = True
 
         cv2.putText(frame, "Drawing Mode", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-        cv2.putText(frame, "Show fist to go back to menu", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(frame, "Show open palm to erase all", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.rectangle(frame, (500, 20), (650, 70), (0, 255, 0), -1)
+        cv2.putText(frame, "Erase All", (510, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.rectangle(frame, (500, 90), (650, 140), (0, 255, 0), -1)
+        cv2.putText(frame, "Back", (510, 130), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
         if result.multi_hand_landmarks:
             for hand_landmarks in result.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
                 index_tip = hand_landmarks.landmark[8]
-
-                height, width, _ = frame.shape
                 index_x, index_y = int(index_tip.x * width), int(index_tip.y * height)
 
                 # Draw circle where index finger is
                 cv2.circle(canvas, (index_x, index_y), 5, (0, 255, 0), -1)
 
-                # Check for open palm gesture to erase all
-                palm_open = all(
-                    hand_landmarks.landmark[tip].y < hand_landmarks.landmark[tip - 2].y
-                    for tip in [8, 12, 16, 20]
-                )
-                if palm_open:
+                # Check for "Erase All" button hover
+                result = check_hover_and_hold(index_x, index_y, 500, 20, 650, 70, hold_start_time)
+                if result == "selected":
                     canvas = np.zeros_like(frame)
+                    hold_start_time = None
 
-                # Check for fist gesture to go back to menu
-                fist_closed = all(
-                    hand_landmarks.landmark[tip].y > hand_landmarks.landmark[tip - 2].y
-                    for tip in [8, 12, 16, 20]
-                )
-                if fist_closed:
+                # Check for "Back" button hover
+                result = check_hover_and_hold(index_x, index_y, 500, 90, 650, 140, hold_start_time)
+                if result == "selected":
                     mode = "menu"
+                    hold_start_time = None
+                elif result:
+                    hold_start_time = result
 
         # Blend canvas with original frame
         frame = cv2.addWeighted(frame, 0.7, canvas, 0.3, 0)
