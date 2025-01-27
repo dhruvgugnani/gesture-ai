@@ -41,9 +41,9 @@ def check_hover_and_hold(index_x, index_y, x1, y1, x2, y2, hold_start_time):
 def draw_puppet(frame, puppet_positions, index_pos, thumb_pos):
     """Draw the puppet on the frame based on joint positions."""
     # Draw strings (ropes)
-    cv2.line(frame, index_pos, puppet_positions["head"], (200, 200, 200), 2)  # Head rope
-    cv2.line(frame, thumb_pos, puppet_positions["left_hand"], (200, 200, 200), 2)  # Left hand rope
-    cv2.line(frame, puppet_positions["head"], puppet_positions["right_hand"], (200, 200, 200), 2)  # Right hand rope
+    cv2.line(frame, index_pos, puppet_positions["head"], (41.246, 21.267, 1.933), 2)  # Head rope
+    cv2.line(frame, thumb_pos, puppet_positions["left_hand"], (41.246, 21.267, 1.933), 2)  # Left hand rope
+    cv2.line(frame, puppet_positions["head"], puppet_positions["right_hand"], (41.246, 21.267, 1.933), 2)  # Right hand rope
 
     # Draw body parts
     cv2.circle(frame, puppet_positions["head"], 30, (0, 255, 255), -1)
@@ -54,6 +54,7 @@ def draw_puppet(frame, puppet_positions, index_pos, thumb_pos):
     cv2.circle(frame, (center[0] + 10, center[1] - 10), 5, (0, 0, 0), -1)  # Right eye
     cv2.ellipse(frame, (center[0], center[1] + 10), (15, 8), 0, 0, 180, (0, 0, 0), 2)  # Smiling mouth
 
+    # Draw limbs and connections
     cv2.line(frame, puppet_positions["head"], puppet_positions["left_hand"], (255, 255, 255), 4)
     cv2.line(frame, puppet_positions["head"], puppet_positions["right_hand"], (255, 255, 255), 4)
     cv2.line(frame, puppet_positions["head"], ((puppet_positions["left_leg"][0] + puppet_positions["right_leg"][0]) // 2, puppet_positions["left_leg"][1] - 30), (255, 255, 255), 4)
@@ -174,12 +175,12 @@ while cap.isOpened():
                 elif result:
                     hold_start_time = result
 
-        # Blend canvas with original frame
-        frame = cv2.addWeighted(frame, 0.7, canvas, 0.3, 0)
+        # Combine canvas with frame
+        frame = cv2.addWeighted(frame, 0.5, canvas, 0.5, 0)
 
     # Puppet Mode
     elif mode == "puppet":
-        cv2.putText(frame, "Puppet Show Mode", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+        cv2.putText(frame, "Puppet Mode", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
         cv2.rectangle(frame, (500, 20), (650, 70), (0, 255, 0), -1)
         cv2.putText(frame, "Back", (510, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
@@ -192,9 +193,17 @@ while cap.isOpened():
                 index_x, index_y = int(index_tip.x * width), int(index_tip.y * height)
                 thumb_x, thumb_y = int(thumb_tip.x * width), int(thumb_tip.y * height)
 
-                puppet_positions["head"] = (index_x, index_y)
-                puppet_positions["left_hand"] = (thumb_x, thumb_y)
+                string_length = 70
 
+                puppet_positions["head"] = (index_x, index_y + string_length)
+                puppet_positions["left_hand"] = (thumb_x - 30, thumb_y + 30)
+                puppet_positions["right_hand"] = (puppet_positions["head"][0] + 50, puppet_positions["head"][1] + 50)
+                puppet_positions["left_leg"] = (
+                puppet_positions["head"][0] - 30, puppet_positions["head"][1] + 100 + int(10 * np.sin(time.time())))
+                puppet_positions["right_leg"] = (
+                puppet_positions["head"][0] + 30, puppet_positions["head"][1] + 100 - int(10 * np.sin(time.time())))
+
+                # Draw the updated puppet
                 draw_puppet(frame, puppet_positions, (index_x, index_y), (thumb_x, thumb_y))
 
                 # Check for "Back" button hover
@@ -205,10 +214,8 @@ while cap.isOpened():
                 elif result:
                     hold_start_time = result
 
-    # Show Frame
     cv2.imshow("Hand Gesture AI", frame)
 
-    # Exit Condition
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
