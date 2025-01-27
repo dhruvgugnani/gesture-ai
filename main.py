@@ -13,9 +13,18 @@ hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7
 mode = "menu"  # Initial mode
 prev_time = time.time()
 hold_start_time = None
-menu_options = ["Volume Control", "Drawing"]
+menu_options = ["Volume Control", "Drawing", "Puppet"]
 canvas_initialized = False
 canvas = None
+
+# Puppet properties
+puppet_positions = {
+    "head": (300, 200),
+    "left_hand": (250, 300),
+    "right_hand": (350, 300),
+    "left_leg": (270, 400),
+    "right_leg": (330, 400),
+}
 
 # Open Webcam
 cap = cv2.VideoCapture(0)
@@ -25,9 +34,35 @@ def check_hover_and_hold(index_x, index_y, x1, y1, x2, y2, hold_start_time):
     if x1 < index_x < x2 and y1 < index_y < y2:
         if hold_start_time is None:
             return time.time()
-        elif time.time() - hold_start_time > 1:  # Hold for 3 seconds
+        elif time.time() - hold_start_time > 1:  # Hold for 1 second
             return "selected"
     return None
+
+def draw_puppet(frame, puppet_positions, index_pos, thumb_pos):
+    """Draw the puppet on the frame based on joint positions."""
+    # Draw strings (ropes)
+    cv2.line(frame, index_pos, puppet_positions["head"], (200, 200, 200), 2)  # Head rope
+    cv2.line(frame, thumb_pos, puppet_positions["left_hand"], (200, 200, 200), 2)  # Left hand rope
+    cv2.line(frame, puppet_positions["head"], puppet_positions["right_hand"], (200, 200, 200), 2)  # Right hand rope
+
+    # Draw body parts
+    cv2.circle(frame, puppet_positions["head"], 30, (0, 255, 255), -1)
+
+    # Add smiley face to head
+    center = puppet_positions["head"]
+    cv2.circle(frame, (center[0] - 10, center[1] - 10), 5, (0, 0, 0), -1)  # Left eye
+    cv2.circle(frame, (center[0] + 10, center[1] - 10), 5, (0, 0, 0), -1)  # Right eye
+    cv2.ellipse(frame, (center[0], center[1] + 10), (15, 8), 0, 0, 180, (0, 0, 0), 2)  # Smiling mouth
+
+    cv2.line(frame, puppet_positions["head"], puppet_positions["left_hand"], (255, 255, 255), 4)
+    cv2.line(frame, puppet_positions["head"], puppet_positions["right_hand"], (255, 255, 255), 4)
+    cv2.line(frame, puppet_positions["head"], ((puppet_positions["left_leg"][0] + puppet_positions["right_leg"][0]) // 2, puppet_positions["left_leg"][1] - 30), (255, 255, 255), 4)
+    cv2.line(frame, ((puppet_positions["left_leg"][0] + puppet_positions["right_leg"][0]) // 2, puppet_positions["left_leg"][1] - 30), puppet_positions["left_leg"], (255, 255, 255), 4)
+    cv2.line(frame, ((puppet_positions["left_leg"][0] + puppet_positions["right_leg"][0]) // 2, puppet_positions["left_leg"][1] - 30), puppet_positions["right_leg"], (255, 255, 255), 4)
+    cv2.circle(frame, puppet_positions["left_hand"], 15, (0, 255, 0), -1)
+    cv2.circle(frame, puppet_positions["right_hand"], 15, (0, 255, 0), -1)
+    cv2.circle(frame, puppet_positions["left_leg"], 15, (255, 0, 0), -1)
+    cv2.circle(frame, puppet_positions["right_leg"], 15, (255, 0, 0), -1)
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -123,7 +158,7 @@ while cap.isOpened():
                 index_x, index_y = int(index_tip.x * width), int(index_tip.y * height)
 
                 # Draw circle where index finger is
-                cv2.circle(canvas, (index_x, index_y), 5, (0, 255, 0), -1)
+                cv2.circle(canvas, (index_x, index_y), 15, (0, 255, 255), -1)
 
                 # Check for "Erase All" button hover
                 result = check_hover_and_hold(index_x, index_y, 500, 20, 650, 70, hold_start_time)
@@ -142,10 +177,38 @@ while cap.isOpened():
         # Blend canvas with original frame
         frame = cv2.addWeighted(frame, 0.7, canvas, 0.3, 0)
 
-    # Display Frame
-    cv2.imshow('Hand Gesture AI', frame)
+    # Puppet Mode
+    elif mode == "puppet":
+        cv2.putText(frame, "Puppet Show Mode", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+        cv2.rectangle(frame, (500, 20), (650, 70), (0, 255, 0), -1)
+        cv2.putText(frame, "Back", (510, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-    # Exit on pressing 'q'
+        if result.multi_hand_landmarks:
+            for hand_landmarks in result.multi_hand_landmarks:
+                mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+                index_tip = hand_landmarks.landmark[8]
+                thumb_tip = hand_landmarks.landmark[4]
+                index_x, index_y = int(index_tip.x * width), int(index_tip.y * height)
+                thumb_x, thumb_y = int(thumb_tip.x * width), int(thumb_tip.y * height)
+
+                puppet_positions["head"] = (index_x, index_y)
+                puppet_positions["left_hand"] = (thumb_x, thumb_y)
+
+                draw_puppet(frame, puppet_positions, (index_x, index_y), (thumb_x, thumb_y))
+
+                # Check for "Back" button hover
+                result = check_hover_and_hold(index_x, index_y, 500, 20, 650, 70, hold_start_time)
+                if result == "selected":
+                    mode = "menu"
+                    hold_start_time = None
+                elif result:
+                    hold_start_time = result
+
+    # Show Frame
+    cv2.imshow("Hand Gesture AI", frame)
+
+    # Exit Condition
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
